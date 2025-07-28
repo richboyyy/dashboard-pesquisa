@@ -115,20 +115,19 @@ if not df_filtrado.empty:
     area_resp = df_filtrado["Área"].value_counts().reset_index()
     area_resp.columns = ['Área', 'Quantidade']
     
-    # ATUALIZAÇÃO: Calcula a altura do gráfico dinamicamente
-    # Damos 25 pixels para cada barra + 200 pixels para margens e título.
-    altura_grafico_area = len(area_resp) * 25 + 200
-
-    fig1 = px.bar(area_resp, x='Quantidade', y='Área', orientation='h',
+    # ATUALIZAÇÃO: Gráfico alterado para vertical
+    fig1 = px.bar(area_resp,
+                  x='Área',
+                  y='Quantidade',
                   color='Área',
                   labels={'Quantidade': 'Nº de Manifestações', 'Área': 'Área Responsável'},
-                  text='Quantidade',
-                  height=altura_grafico_area) # Define a altura calculada
-    
+                  text_auto=True) # Adiciona os valores diretamente nas barras
+
     # Melhora a visualização do gráfico
     fig1.update_layout(
         showlegend=False,
-        yaxis={'categoryorder':'total ascending'} # Ordena as barras da menor para a maior
+        xaxis_tickangle=-45, # Rotaciona os rótulos do eixo X para melhor leitura
+        xaxis={'categoryorder':'total descending'} # Ordena as barras da maior para a menor
     )
     st.plotly_chart(fig1, use_container_width=True)
 
