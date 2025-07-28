@@ -13,7 +13,6 @@ st.set_page_config(
 )
 
 # Define o locale para português do Brasil para garantir que os nomes dos meses fiquem corretos.
-# Isso pode ser necessário dependendo do ambiente onde o app está rodando.
 try:
     locale.setlocale(locale.LC_TIME, 'pt_BR.UTF-8')
 except locale.Error:
@@ -21,27 +20,59 @@ except locale.Error:
 
 # --- Carregamento e Pré-processamento dos Dados ---
 
-# Usamos um bloco try-except para lidar com o caso de o arquivo não ser encontrado.
 @st.cache_data
 def carregar_dados():
+    """
+    Carrega os dados do CSV e os pré-processa.
+    Esta função foi atualizada para ser mais robusta contra erros de nome de coluna.
+    """
     try:
-        # Carrega os dados do arquivo CSV
-        df = pd.read_csv("pesquisa.csv", sep=";", encoding="latin1")
-        # Converte a coluna de data, tratando erros ao converter para NaT (Not a Time)
-        df["Resposta à Pesquisa"] = pd.to_datetime(df["Resposta à Pesquisa"], errors="coerce")
-        # Remove linhas onde a data não pôde ser convertida
-        df.dropna(subset=["Resposta à Pesquisa"], inplace=True)
-        # Extrai o nome do mês em minúsculas
-        df["mês"] = df["Resposta à Pesquisa"].dt.month_name().str.lower()
-        return df
+        # ATUALIZAÇÃO: Alterado o encoding para "utf-8" para ler caracteres especiais corretamente.
+        df = pd.read_csv("pesquisa.csv", sep=";", encoding="utf-8")
     except FileNotFoundError:
-        st.error("Erro: O arquivo 'pesquisa.csv' não foi encontrado. Por favor, certifique-se de que o arquivo está na mesma pasta que o seu script `app.py`.")
+        st.error("Erro: O arquivo 'pesquisa.csv' não foi encontrado. Por favor, certifique-se de que o arquivo está no seu repositório GitHub junto com o script do app.")
         return None
+    except Exception as e:
+        st.error(f"Ocorreu um erro ao ler o arquivo CSV. Verifique o formato e a codificação do arquivo. Erro: {e}")
+        return None
+
+
+    # ATUALIZAÇÃO: Lógica para encontrar a coluna de data correta
+    # Lista de possíveis nomes para a coluna de data que queremos processar.
+    opcoes_coluna_data = ['Resposta à Pesquisa', 'Resposta à pesquisa']
+    coluna_data_encontrada = None
+
+    # Procura por uma das opções de coluna no DataFrame carregado.
+    for coluna in opcoes_coluna_data:
+        if coluna in df.columns:
+            coluna_data_encontrada = coluna
+            break # Para o loop assim que encontrar a primeira correspondência
+
+    # Se, após o loop, nenhuma coluna de data for encontrada, exibe um erro claro e a lista de colunas disponíveis.
+    if coluna_data_encontrada is None:
+        st.error(
+            "Erro Crítico: Não foi possível encontrar uma coluna de data ('Resposta à Pesquisa' ou 'Resposta à pesquisa') no arquivo CSV."
+        )
+        st.warning("Verifique se o nome da coluna no seu arquivo `pesquisa.csv` corresponde a uma das opções acima.")
+        st.info("As colunas que foram encontradas no arquivo são:")
+        st.code(df.columns.tolist()) # Mostra as colunas exatas para depuração
+        return None
+
+    # Se a coluna foi encontrada, prossegue com o processamento
+    try:
+        df[coluna_data_encontrada] = pd.to_datetime(df[coluna_data_encontrada], errors='coerce')
+        df.dropna(subset=[coluna_data_encontrada], inplace=True)
+        df["mês"] = df[coluna_data_encontrada].dt.month_name().str.lower()
+        return df
+    except Exception as e:
+        st.error(f"Ocorreu um erro ao processar a coluna de data '{coluna_data_encontrada}': {e}")
+        return None
+
 
 df = carregar_dados()
 
 if df is None:
-    st.stop() # Interrompe a execução do script se o arquivo não for encontrado.
+    st.stop() # Interrompe a execução do script se os dados não puderem ser carregados.
 
 
 # --- Barra Lateral (Sidebar) com Filtros ---
@@ -49,70 +80,62 @@ if df is None:
 st.sidebar.title("🗓️ Filtro de Tempo")
 st.sidebar.markdown("Use o filtro abaixo para analisar um período específico.")
 
-# Obtém a lista de meses únicos e a ordena
-# Usamos list() para garantir que a ordem seja preservada após o sorted()
 meses_disponiveis = sorted(list(df["mês"].dropna().unique()))
 
 meses_selecionados = st.sidebar.multiselect(
     "Selecione o(s) mês(es):",
     options=meses_disponiveis,
-    default=meses_disponiveis # Por padrão, todos os meses vêm selecionados
+    default=meses_disponiveis
 )
 
 # Filtra o DataFrame com base na seleção.
 if meses_selecionados:
     df_filtrado = df[df["mês"].isin(meses_selecionados)]
 else:
-    # Se nenhum mês for selecionado, o ideal é mostrar uma mensagem em vez de um dashboard vazio
     st.warning("Por favor, selecione pelo menos um mês na barra lateral para visualizar os dados.")
-    df_filtrado = pd.DataFrame() # Cria um DataFrame vazio para evitar erros nos gráficos
+    df_filtrado = pd.DataFrame()
 
 # --- Página Principal ---
 
 st.title("📊 Dashboard de Análise de Manifestações da ANVISA")
 st.markdown("Este painel apresenta uma análise das respostas da pesquisa de satisfação.")
 
-# Verifica se o dataframe filtrado não está vazio antes de tentar renderizar o resto da página
 if not df_filtrado.empty:
     # --- Métricas Principais ---
     col1, col2 = st.columns(2)
     col1.metric("Total de Respostas no Período", len(df_filtrado))
-    # Exemplo de outra métrica que você poderia adicionar
     col2.metric("Período Analisado", f"{len(meses_selecionados)} mese(s)")
 
-    st.markdown("---") # Linha divisória
+    st.markdown("---")
 
     # --- Gráficos ---
 
     # Gráfico 1 - Área Responsável
     st.subheader("Distribuição de Manifestações por Área")
-    # ATUALIZAÇÃO: Usando a coluna "Área"
     area_resp = df_filtrado["Área"].value_counts().reset_index()
     area_resp.columns = ['Área', 'Quantidade']
     fig1 = px.bar(area_resp, x='Quantidade', y='Área', orientation='h',
                   color='Área',
                   labels={'Quantidade': 'Nº de Manifestações', 'Área': 'Área Responsável'},
                   text='Quantidade')
-    fig1.update_layout(showlegend=False) # Esconde a legenda para um visual mais limpo
+    fig1.update_layout(showlegend=False)
     st.plotly_chart(fig1, use_container_width=True)
 
     # Gráfico 2 - Tipo de Manifestação
     st.subheader("Classificação por Tipo de Manifestação")
-    # ATUALIZAÇÃO: Usando a coluna "Tipo de Manifestação"
     tipo = df_filtrado["Tipo de Manifestação"].value_counts().reset_index()
     tipo.columns = ['Tipo', 'Quantidade']
     fig2 = px.pie(tipo, values='Quantidade', names='Tipo',
                   title='Proporção por Tipo de Manifestação',
-                  hole=.3) # Gráfico de rosca para variar
+                  hole=.3)
     st.plotly_chart(fig2, use_container_width=True)
 
 
-    # Gráfico 3 - Atendimento à Demanda e Satisfação com Atendimento
+    # Gráfico 3 - Avaliação do Atendimento
     st.subheader("Avaliação do Atendimento")
     col3, col4 = st.columns(2)
 
     with col3:
-        # ATUALIZAÇÃO: Usando a coluna "A sua demanda foi atendida?"
         st.markdown("##### A sua demanda foi atendida?")
         avaliacao = df_filtrado["A sua demanda foi atendida?"].value_counts().reset_index()
         avaliacao.columns = ['Resposta', 'Quantidade']
@@ -123,7 +146,6 @@ if not df_filtrado.empty:
         st.plotly_chart(fig3, use_container_width=True)
 
     with col4:
-        # ATUALIZAÇÃO: Usando a coluna "Você está satisfeito(a) com o atendimento prestado?"
         st.markdown("##### Satisfação com o atendimento prestado")
         satisfacao = df_filtrado["Você está satisfeito(a) com o atendimento prestado?"].value_counts().reset_index()
         satisfacao.columns = ['Satisfação', 'Quantidade']
@@ -134,5 +156,4 @@ if not df_filtrado.empty:
         st.plotly_chart(fig4, use_container_width=True)
 
 else:
-    # Se o dataframe estiver vazio (nenhum mês selecionado), a mensagem de aviso já foi exibida.
     st.info("Selecione os meses na barra à esquerda para começar a análise.")
