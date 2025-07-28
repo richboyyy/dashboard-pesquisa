@@ -23,39 +23,47 @@ except locale.Error:
 @st.cache_data
 def carregar_dados():
     """
-    Carrega os dados do CSV e os pré-processa.
-    Esta função foi atualizada para ser mais robusta contra erros de nome de coluna.
+    Carrega os dados do CSV, testando várias codificações para evitar erros.
     """
-    try:
-        # ATUALIZAÇÃO FINAL: Alterado o encoding para "cp1252", que é comum para arquivos Windows em português.
-        df = pd.read_csv("pesquisa.csv", sep=";", encoding="cp1252")
-    except FileNotFoundError:
-        st.error("Erro: O arquivo 'pesquisa.csv' não foi encontrado. Por favor, certifique-se de que o arquivo está no seu repositório GitHub junto com o script do app.")
-        return None
-    except Exception as e:
-        st.error(f"Ocorreu um erro ao ler o arquivo CSV. Verifique o formato e a codificação do arquivo. Erro: {e}")
+    encodings_para_tentar = ['utf-8', 'cp1252', 'latin1', 'iso-8859-1']
+    df = None
+
+    for encoding in encodings_para_tentar:
+        try:
+            df = pd.read_csv("pesquisa.csv", sep=";", encoding=encoding)
+            # Se a leitura for bem-sucedida, saímos do loop
+            st.success(f"Arquivo lido com sucesso usando a codificação: {encoding}")
+            break
+        except FileNotFoundError:
+            st.error("Erro: O arquivo 'pesquisa.csv' não foi encontrado. Por favor, certifique-se de que o arquivo está no seu repositório GitHub junto com o script do app.")
+            return None
+        except UnicodeDecodeError:
+            # Se der erro de decodificação, continua para a próxima tentativa
+            continue
+        except Exception as e:
+            st.error(f"Ocorreu um erro inesperado ao ler o arquivo com encoding {encoding}: {e}")
+            continue
+    
+    # Se o loop terminar e o df ainda for None, significa que nenhuma codificação funcionou.
+    if df is None:
+        st.error("Não foi possível ler o arquivo CSV com nenhuma das codificações testadas ('utf-8', 'cp1252', 'latin1', 'iso-8859-1'). Por favor, verifique a codificação do seu arquivo.")
         return None
 
+    # --- Processamento das Colunas ---
 
-    # ATUALIZAÇÃO: Lógica para encontrar a coluna de data correta
-    # Lista de possíveis nomes para a coluna de data que queremos processar.
+    # Lógica para encontrar a coluna de data correta
     opcoes_coluna_data = ['Resposta à Pesquisa', 'Resposta à pesquisa']
     coluna_data_encontrada = None
 
-    # Procura por uma das opções de coluna no DataFrame carregado.
     for coluna in opcoes_coluna_data:
         if coluna in df.columns:
             coluna_data_encontrada = coluna
-            break # Para o loop assim que encontrar a primeira correspondência
+            break
 
-    # Se, após o loop, nenhuma coluna de data for encontrada, exibe um erro claro e a lista de colunas disponíveis.
     if coluna_data_encontrada is None:
-        st.error(
-            "Erro Crítico: Não foi possível encontrar uma coluna de data ('Resposta à Pesquisa' ou 'Resposta à pesquisa') no arquivo CSV."
-        )
-        st.warning("Verifique se o nome da coluna no seu arquivo `pesquisa.csv` corresponde a uma das opções acima.")
+        st.error("Erro Crítico: Não foi possível encontrar uma coluna de data ('Resposta à Pesquisa' ou 'Resposta à pesquisa') no arquivo CSV.")
         st.info("As colunas que foram encontradas no arquivo são:")
-        st.code(df.columns.tolist()) # Mostra as colunas exatas para depuração
+        st.code(df.columns.tolist())
         return None
 
     # Se a coluna foi encontrada, prossegue com o processamento
@@ -72,7 +80,7 @@ def carregar_dados():
 df = carregar_dados()
 
 if df is None:
-    st.stop() # Interrompe a execução do script se os dados não puderem ser carregados.
+    st.stop()
 
 
 # --- Barra Lateral (Sidebar) com Filtros ---
