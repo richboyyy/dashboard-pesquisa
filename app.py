@@ -27,8 +27,8 @@ def carregar_dados():
     Esta função foi atualizada para ser mais robusta contra erros de nome de coluna.
     """
     try:
-        # ATUALIZAÇÃO: Alterado o encoding para "utf-8" para ler caracteres especiais corretamente.
-        df = pd.read_csv("pesquisa.csv", sep=";", encoding="utf-8")
+        # ATUALIZAÇÃO FINAL: Alterado o encoding para "cp1252", que é comum para arquivos Windows em português.
+        df = pd.read_csv("pesquisa.csv", sep=";", encoding="cp1252")
     except FileNotFoundError:
         st.error("Erro: O arquivo 'pesquisa.csv' não foi encontrado. Por favor, certifique-se de que o arquivo está no seu repositório GitHub junto com o script do app.")
         return None
