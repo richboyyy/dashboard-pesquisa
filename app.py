@@ -23,33 +23,25 @@ except locale.Error:
 @st.cache_data
 def carregar_dados():
     """
-    Carrega os dados do CSV, testando várias codificações para evitar erros.
+    Carrega os dados do CSV usando a codificação correta (utf-8) e limpa os dados.
     """
-    encodings_para_tentar = ['utf-8', 'cp1252', 'latin1', 'iso-8859-1']
-    df = None
-
-    for encoding in encodings_para_tentar:
-        try:
-            df = pd.read_csv("pesquisa.csv", sep=";", encoding=encoding)
-            # Se a leitura for bem-sucedida, saímos do loop
-            st.success(f"Arquivo lido com sucesso usando a codificação: {encoding}")
-            break
-        except FileNotFoundError:
-            st.error("Erro: O arquivo 'pesquisa.csv' não foi encontrado. Por favor, certifique-se de que o arquivo está no seu repositório GitHub junto com o script do app.")
-            return None
-        except UnicodeDecodeError:
-            # Se der erro de decodificação, continua para a próxima tentativa
-            continue
-        except Exception as e:
-            st.error(f"Ocorreu um erro inesperado ao ler o arquivo com encoding {encoding}: {e}")
-            continue
-    
-    # Se o loop terminar e o df ainda for None, significa que nenhuma codificação funcionou.
-    if df is None:
-        st.error("Não foi possível ler o arquivo CSV com nenhuma das codificações testadas ('utf-8', 'cp1252', 'latin1', 'iso-8859-1'). Por favor, verifique a codificação do seu arquivo.")
+    try:
+        # Usando 'utf-8' diretamente, pois sabemos que é a codificação correta.
+        df = pd.read_csv("pesquisa.csv", sep=";", encoding='utf-8')
+    except FileNotFoundError:
+        st.error("Erro: O arquivo 'pesquisa.csv' não foi encontrado. Por favor, certifique-se de que o arquivo está no seu repositório GitHub junto com o script do app.")
+        return None
+    except Exception as e:
+        st.error(f"Ocorreu um erro ao ler o arquivo CSV. Verifique o formato do arquivo. Erro: {e}")
         return None
 
-    # --- Processamento das Colunas ---
+    # --- Processamento e Limpeza das Colunas ---
+
+    # ATUALIZAÇÃO: Remove o prefixo "?? " da coluna de satisfação.
+    # Verifica se a coluna existe antes de tentar modificá-la.
+    coluna_satisfacao = "Você está satisfeito(a) com o atendimento prestado?"
+    if coluna_satisfacao in df.columns:
+        df[coluna_satisfacao] = df[coluna_satisfacao].str.replace('?? ', '', regex=False).str.strip()
 
     # Lógica para encontrar a coluna de data correta
     opcoes_coluna_data = ['Resposta à Pesquisa', 'Resposta à pesquisa']
@@ -122,11 +114,22 @@ if not df_filtrado.empty:
     st.subheader("Distribuição de Manifestações por Área")
     area_resp = df_filtrado["Área"].value_counts().reset_index()
     area_resp.columns = ['Área', 'Quantidade']
+    
+    # ATUALIZAÇÃO: Calcula a altura do gráfico dinamicamente
+    # Damos 25 pixels para cada barra + 200 pixels para margens e título.
+    altura_grafico_area = len(area_resp) * 25 + 200
+
     fig1 = px.bar(area_resp, x='Quantidade', y='Área', orientation='h',
                   color='Área',
                   labels={'Quantidade': 'Nº de Manifestações', 'Área': 'Área Responsável'},
-                  text='Quantidade')
-    fig1.update_layout(showlegend=False)
+                  text='Quantidade',
+                  height=altura_grafico_area) # Define a altura calculada
+    
+    # Melhora a visualização do gráfico
+    fig1.update_layout(
+        showlegend=False,
+        yaxis={'categoryorder':'total ascending'} # Ordena as barras da menor para a maior
+    )
     st.plotly_chart(fig1, use_container_width=True)
 
     # Gráfico 2 - Tipo de Manifestação
@@ -155,12 +158,13 @@ if not df_filtrado.empty:
 
     with col4:
         st.markdown("##### Satisfação com o atendimento prestado")
+        # Os dados já foram limpos na função carregar_dados()
         satisfacao = df_filtrado["Você está satisfeito(a) com o atendimento prestado?"].value_counts().reset_index()
         satisfacao.columns = ['Satisfação', 'Quantidade']
         fig4 = px.bar(satisfacao, x='Quantidade', y='Satisfação', color='Satisfação',
                       labels={'Quantidade': 'Contagem', 'Satisfação': 'Nível de Satisfação'},
                       text_auto=True)
-        fig4.update_layout(showlegend=False)
+        fig4.update_layout(showlegend=False, yaxis={'categoryorder':'total ascending'})
         st.plotly_chart(fig4, use_container_width=True)
 
 else:
