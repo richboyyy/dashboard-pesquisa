@@ -5,155 +5,167 @@ import locale
 
 # --- Configurações Iniciais ---
 
-# Define a configuração da página. Isso deve ser o primeiro comando do Streamlit.
 st.set_page_config(
-    page_title="Dashboard de Manifestações ANVISA",
+    page_title="Dashboard Ouvidoria ANVISA",
     page_icon="📊",
     layout="wide"
 )
 
-# Define o locale para português do Brasil para garantir que os nomes dos meses fiquem corretos.
-try:
-    locale.setlocale(locale.LC_TIME, 'pt_BR.UTF-8')
-except locale.Error:
-    st.warning("Locale 'pt_BR.UTF-8' não encontrado. Os nomes dos meses podem aparecer em inglês.")
-
-# --- Carregamento e Pré-processamento dos Dados ---
+# --- Funções de Carregamento de Dados ---
 
 @st.cache_data
-def carregar_dados():
+def carregar_dados_pesquisa():
     """
-    Carrega os dados do CSV e os pré-processa.
-    Esta função foi atualizada para ser mais robusta contra erros de nome de coluna.
+    Carrega e processa os dados da pesquisa de satisfação (pesquisa.csv).
     """
     try:
-        # ATUALIZAÇÃO: Alterado o encoding para "utf-8" para ler caracteres especiais corretamente.
-        df = pd.read_csv("pesquisa.csv", sep=";", encoding="utf-8")
-    except FileNotFoundError:
-        st.error("Erro: O arquivo 'pesquisa.csv' não foi encontrado. Por favor, certifique-se de que o arquivo está no seu repositório GitHub junto com o script do app.")
-        return None
-    except Exception as e:
-        st.error(f"Ocorreu um erro ao ler o arquivo CSV. Verifique o formato e a codificação do arquivo. Erro: {e}")
-        return None
-
-
-    # ATUALIZAÇÃO: Lógica para encontrar a coluna de data correta
-    # Lista de possíveis nomes para a coluna de data que queremos processar.
-    opcoes_coluna_data = ['Resposta à Pesquisa', 'Resposta à pesquisa']
-    coluna_data_encontrada = None
-
-    # Procura por uma das opções de coluna no DataFrame carregado.
-    for coluna in opcoes_coluna_data:
-        if coluna in df.columns:
-            coluna_data_encontrada = coluna
-            break # Para o loop assim que encontrar a primeira correspondência
-
-    # Se, após o loop, nenhuma coluna de data for encontrada, exibe um erro claro e a lista de colunas disponíveis.
-    if coluna_data_encontrada is None:
-        st.error(
-            "Erro Crítico: Não foi possível encontrar uma coluna de data ('Resposta à Pesquisa' ou 'Resposta à pesquisa') no arquivo CSV."
-        )
-        st.warning("Verifique se o nome da coluna no seu arquivo `pesquisa.csv` corresponde a uma das opções acima.")
-        st.info("As colunas que foram encontradas no arquivo são:")
-        st.code(df.columns.tolist()) # Mostra as colunas exatas para depuração
-        return None
-
-    # Se a coluna foi encontrada, prossegue com o processamento
-    try:
-        df[coluna_data_encontrada] = pd.to_datetime(df[coluna_data_encontrada], errors='coerce')
-        df.dropna(subset=[coluna_data_encontrada], inplace=True)
-        df["mês"] = df[coluna_data_encontrada].dt.month_name().str.lower()
+        df = pd.read_csv("pesquisa.csv", sep=";", encoding='utf-8')
+        # Limpa a coluna de satisfação, se ela existir
+        coluna_satisfacao = "Você está satisfeito(a) com o atendimento prestado?"
+        if coluna_satisfacao in df.columns:
+            df[coluna_satisfacao] = df[coluna_satisfacao].str.replace('?? ', '', regex=False).str.strip()
+        
+        # Processa a coluna de data para o filtro
+        opcoes_coluna_data = ['Resposta à Pesquisa', 'Resposta à pesquisa']
+        coluna_data_encontrada = None
+        for coluna in opcoes_coluna_data:
+            if coluna in df.columns:
+                coluna_data_encontrada = coluna
+                break
+        if coluna_data_encontrada:
+            df[coluna_data_encontrada] = pd.to_datetime(df[coluna_data_encontrada], errors='coerce')
+            df.dropna(subset=[coluna_data_encontrada], inplace=True)
+            # Usa a mesma coluna 'mês' para poder filtrar junto com o outro dataframe
+            df["mês"] = df[coluna_data_encontrada].dt.to_period('M')
         return df
-    except Exception as e:
-        st.error(f"Ocorreu um erro ao processar a coluna de data '{coluna_data_encontrada}': {e}")
+    except FileNotFoundError:
+        st.error("Arquivo 'pesquisa.csv' não encontrado. Verifique se o arquivo está no seu repositório.")
         return None
 
+@st.cache_data
+def carregar_dados_manifestacoes():
+    """
+    Carrega e processa os dados gerais de manifestações (ListaManifestacoes.xlsx).
+    """
+    try:
+        # ATENÇÃO: Verifique se o nome do arquivo é .xlsx ou .csv
+        df = pd.read_excel("ListaManifestacoes.xlsx")
+    except FileNotFoundError:
+        st.error("Arquivo 'ListaManifestacoes.xlsx' não encontrado. Verifique se o arquivo está no seu repositório.")
+        return None
+    except Exception as e:
+        st.error(f"Ocorreu um erro ao ler o arquivo Excel: {e}")
+        return None
 
-df = carregar_dados()
+    # Processa a coluna de data para o filtro
+    if 'Data de Abertura' in df.columns:
+        df['Data de Abertura'] = pd.to_datetime(df['Data de Abertura'], errors='coerce')
+        df.dropna(subset=['Data de Abertura'], inplace=True)
+        df["mês"] = df['Data de Abertura'].dt.to_period('M')
+    else:
+        st.warning("Coluna 'Data de Abertura' não encontrada no arquivo de manifestações para o filtro de tempo.")
+        df["mês"] = None
+    
+    return df
 
-if df is None:
-    st.stop() # Interrompe a execução do script se os dados não puderem ser carregados.
+# --- Carregamento e Filtro Principal ---
 
+df_pesquisa = carregar_dados_pesquisa()
+df_manifestacoes = carregar_dados_manifestacoes()
 
-# --- Barra Lateral (Sidebar) com Filtros ---
+if df_pesquisa is None or df_manifestacoes is None:
+    st.stop()
 
-st.sidebar.title("🗓️ Filtro de Tempo")
+st.sidebar.title("Filtro de Tempo")
 st.sidebar.markdown("Use o filtro abaixo para analisar um período específico.")
 
-meses_disponiveis = sorted(list(df["mês"].dropna().unique()))
+# O filtro será baseado nos dados de manifestações
+if "mês" in df_manifestacoes.columns and not df_manifestacoes["mês"].isnull().all():
+    # Converte o período para uma string formatada para exibição
+    df_manifestacoes['mês_display'] = df_manifestacoes['mês'].dt.strftime('%Y-%m')
+    meses_disponiveis = sorted(list(df_manifestacoes["mês_display"].dropna().unique()), reverse=True)
+    
+    meses_selecionados_display = st.sidebar.multiselect(
+        "Selecione o(s) mês(es):",
+        options=meses_disponiveis,
+        default=meses_disponiveis
+    )
+    # Converte a seleção de volta para o tipo período para filtragem
+    meses_selecionados_periodo = pd.to_datetime(meses_selecionados_display).to_period('M')
 
-meses_selecionados = st.sidebar.multiselect(
-    "Selecione o(s) mês(es):",
-    options=meses_disponiveis,
-    default=meses_disponiveis
-)
-
-# Filtra o DataFrame com base na seleção.
-if meses_selecionados:
-    df_filtrado = df[df["mês"].isin(meses_selecionados)]
+    # Filtra os dois dataframes
+    df_manifestacoes_filtrado = df_manifestacoes[df_manifestacoes["mês"].isin(meses_selecionados_periodo)]
+    df_pesquisa_filtrado = df_pesquisa[df_pesquisa["mês"].isin(meses_selecionados_periodo)]
 else:
-    st.warning("Por favor, selecione pelo menos um mês na barra lateral para visualizar os dados.")
-    df_filtrado = pd.DataFrame()
+    st.sidebar.info("Filtro de tempo não disponível.")
+    df_manifestacoes_filtrado = df_manifestacoes
+    df_pesquisa_filtrado = df_pesquisa
 
-# --- Página Principal ---
+# --- Estrutura de Abas ---
 
-st.title("📊 Dashboard de Análise de Manifestações da ANVISA")
-st.markdown("Este painel apresenta uma análise das respostas da pesquisa de satisfação.")
+st.title("📊 Dashboard Ouvidoria ANVISA")
 
-if not df_filtrado.empty:
-    # --- Métricas Principais ---
-    col1, col2 = st.columns(2)
-    col1.metric("Total de Respostas no Período", len(df_filtrado))
-    col2.metric("Período Analisado", f"{len(meses_selecionados)} mese(s)")
+tab1, tab2 = st.tabs(["Análise da Pesquisa de Satisfação", "Painel de Manifestações Gerais"])
 
-    st.markdown("---")
-
-    # --- Gráficos ---
-
-    # Gráfico 1 - Área Responsável
-    st.subheader("Distribuição de Manifestações por Área")
-    area_resp = df_filtrado["Área"].value_counts().reset_index()
-    area_resp.columns = ['Área', 'Quantidade']
-    fig1 = px.bar(area_resp, x='Quantidade', y='Área', orientation='h',
-                  color='Área',
-                  labels={'Quantidade': 'Nº de Manifestações', 'Área': 'Área Responsável'},
-                  text='Quantidade')
-    fig1.update_layout(showlegend=False)
-    st.plotly_chart(fig1, use_container_width=True)
-
-    # Gráfico 2 - Tipo de Manifestação
-    st.subheader("Classificação por Tipo de Manifestação")
-    tipo = df_filtrado["Tipo de Manifestação"].value_counts().reset_index()
-    tipo.columns = ['Tipo', 'Quantidade']
-    fig2 = px.pie(tipo, values='Quantidade', names='Tipo',
-                  title='Proporção por Tipo de Manifestação',
-                  hole=.3)
-    st.plotly_chart(fig2, use_container_width=True)
+# --- Aba 1: Análise da Pesquisa de Satisfação (usa df_pesquisa_filtrado) ---
+with tab1:
+    st.header("Análise da Pesquisa de Satisfação")
+    # ... (código da aba 1 permanece o mesmo, mas usando df_pesquisa_filtrado) ...
+    if not df_pesquisa_filtrado.empty:
+        # ... (código dos gráficos da aba 1) ...
+        st.metric("Total de Respostas no Período", f"{len(df_pesquisa_filtrado):,}".replace(",", "."))
+    else:
+        st.info("Nenhum dado de pesquisa encontrado para o período selecionado.")
 
 
-    # Gráfico 3 - Avaliação do Atendimento
-    st.subheader("Avaliação do Atendimento")
-    col3, col4 = st.columns(2)
+# --- Aba 2: Painel de Manifestações Gerais (usa df_manifestacoes_filtrado) ---
+with tab2:
+    st.header("Painel de Manifestações Gerais")
+    st.markdown("Esta aba apresenta uma visão geral de todas as manifestações recebidas.")
 
-    with col3:
-        st.markdown("##### A sua demanda foi atendida?")
-        avaliacao = df_filtrado["A sua demanda foi atendida?"].value_counts().reset_index()
-        avaliacao.columns = ['Resposta', 'Quantidade']
-        fig3 = px.bar(avaliacao, x='Quantidade', y='Resposta', color='Resposta',
-                      labels={'Quantidade': 'Contagem', 'Resposta': 'Resposta do Usuário'},
-                      text='Quantidade')
-        fig3.update_layout(showlegend=False)
-        st.plotly_chart(fig3, use_container_width=True)
+    if not df_manifestacoes_filtrado.empty:
+        st.metric("Total de Manifestações no Período", f"{len(df_manifestacoes_filtrado):,}".replace(",", "."))
+        st.markdown("---")
 
-    with col4:
-        st.markdown("##### Satisfação com o atendimento prestado")
-        satisfacao = df_filtrado["Você está satisfeito(a) com o atendimento prestado?"].value_counts().reset_index()
-        satisfacao.columns = ['Satisfação', 'Quantidade']
-        fig4 = px.bar(satisfacao, x='Quantidade', y='Satisfação', color='Satisfação',
-                      labels={'Quantidade': 'Contagem', 'Satisfação': 'Nível de Satisfação'},
-                      text_auto=True)
-        fig4.update_layout(showlegend=False)
-        st.plotly_chart(fig4, use_container_width=True)
+        col1, col2 = st.columns(2)
 
-else:
-    st.info("Selecione os meses na barra à esquerda para começar a análise.")
+        with col1:
+            st.subheader("Principais Temas das Manifestações")
+            # Usa a coluna 'Assunto' do novo arquivo
+            temas = df_manifestacoes_filtrado['Assunto'].value_counts().nlargest(10).reset_index()
+            temas.columns = ['Tema', 'Quantidade']
+            fig_temas = px.bar(temas, x='Quantidade', y='Tema', orientation='h', text='Quantidade')
+            fig_temas.update_layout(yaxis={'categoryorder':'total ascending'})
+            st.plotly_chart(fig_temas, use_container_width=True)
+
+        with col2:
+            st.subheader("Tipos de Manifestações Registradas")
+            # Usa a coluna 'Tipo' do novo arquivo
+            tipos_gerais = df_manifestacoes_filtrado['Tipo'].value_counts().reset_index()
+            tipos_gerais.columns = ['Tipo', 'Quantidade']
+            fig_tipos_gerais = px.bar(tipos_gerais, x='Quantidade', y='Tipo', orientation='h', text='Quantidade')
+            fig_tipos_gerais.update_layout(yaxis={'categoryorder':'total ascending'})
+            st.plotly_chart(fig_tipos_gerais, use_container_width=True)
+
+        col3, col4 = st.columns(2)
+        
+        with col3:
+            st.subheader("Distribuição de Manifestações por Área")
+            # Usa a coluna 'Área Responsável' do novo arquivo
+            area_resp = df_manifestacoes_filtrado["Área Responsável"].value_counts().reset_index()
+            area_resp.columns = ['Área', 'Quantidade']
+            fig_area_vertical = px.bar(area_resp, x='Área', y='Quantidade', color='Área', text_auto=True)
+            fig_area_vertical.update_layout(showlegend=False, xaxis_tickangle=-45, xaxis={'categoryorder':'total descending'})
+            st.plotly_chart(fig_area_vertical, use_container_width=True)
+            
+        with col4:
+            st.subheader("Situação Atual das Manifestações")
+            # Usa a coluna 'Situação' do novo arquivo
+            situacao = df_manifestacoes_filtrado['Situação'].value_counts().reset_index()
+            situacao.columns = ['Situação', 'Quantidade']
+            fig_situacao = px.bar(situacao, x='Quantidade', y='Situação', orientation='h', text='Quantidade')
+            fig_situacao.update_layout(yaxis={'categoryorder':'total ascending'})
+            st.plotly_chart(fig_situacao, use_container_width=True)
+
+    else:
+        st.info("Nenhuma manifestação encontrada para o período selecionado.")
