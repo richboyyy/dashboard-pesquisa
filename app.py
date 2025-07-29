@@ -183,39 +183,20 @@ with tab2:
         with col3:
             st.subheader("Distribuição de Manifestações por Área")
             
-            # --- ATUALIZAÇÃO DO GRÁFICO DE ÁREA ---
-            # 1. Contar as ocorrências de cada área
-            area_counts = df_manifestacoes_filtrado["Área Responsável Resp. Concl."].value_counts()
+            # --- ATUALIZAÇÃO: Exibindo como Tabela ---
+            area_counts = df_manifestacoes_filtrado["Área Responsável Resp. Concl."].value_counts().reset_index()
+            area_counts.columns = ['Área Responsável Resp. Concl.', 'Total de Manifestações']
 
-            # 2. Definir o número de áreas principais a serem exibidas
-            top_n = 15
-            if len(area_counts) > top_n:
-                # 3. Separar as top N áreas e as outras
-                top_areas = area_counts.nlargest(top_n)
-                outros_sum = area_counts.nsmallest(len(area_counts) - top_n).sum()
-                
-                
-                area_plot_data = top_areas.reset_index()
-            else:
-                area_plot_data = area_counts.reset_index()
-
-            area_plot_data.columns = ['Área', 'Quantidade']
-
-            # 5. Criar o gráfico horizontal
-            fig_area = px.bar(area_plot_data, 
-                              x='Quantidade', 
-                              y='Área', 
-                              orientation='h', 
-                              text='Quantidade',
-                              title=f"Top {top_n} Áreas com Mais Manifestações")
+            # Adiciona a linha de Total
+            total_row = pd.DataFrame({
+                'Área Responsável Resp. Concl.': ['Total'],
+                'Total de Manifestações': [area_counts['Total de Manifestações'].sum()]
+            })
             
-            fig_area.update_layout(
-                yaxis={'categoryorder':'total ascending'},
-                xaxis_title="Nº de Manifestações",
-                yaxis_title="Área Responsável",
-                height=500 # Altura fixa para melhor visualização
-            )
-            st.plotly_chart(fig_area, use_container_width=True)
+            area_display_table = pd.concat([area_counts, total_row], ignore_index=True)
+
+            # Exibe a tabela usando st.dataframe
+            st.dataframe(area_display_table, use_container_width=True, hide_index=True)
 
         with col4:
             st.subheader("Situação Atual das Manifestações")
