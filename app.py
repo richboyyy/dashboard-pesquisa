@@ -42,6 +42,10 @@ def carregar_dados_manifestacoes():
     try:
         df = pd.read_csv("ListaManifestacoes.csv", sep=";", encoding='utf-8')
 
+        # ATUALIZAÇÃO: Renomeia a coluna para um nome mais simples e limpo.
+        if 'Área Responsável Resp. Concl.' in df.columns:
+            df.rename(columns={'Área Responsável Resp. Concl.': 'Área Responsável'}, inplace=True)
+
         if 'Data de Abertura' in df.columns:
             df['Data de Abertura'] = df['Data de Abertura'].astype(str).str.strip()
             df['Data de Abertura'] = df['Data de Abertura'].replace(
@@ -184,12 +188,12 @@ with tab2:
             st.subheader("Distribuição de Manifestações por Área")
             
             # --- ATUALIZAÇÃO: Exibindo como Tabela ---
-            area_counts = df_manifestacoes_filtrado["Área Responsável Resp. Concl."].value_counts().reset_index()
-            area_counts.columns = ['Área Responsável Resp. Concl.', 'Total de Manifestações']
+            area_counts = df_manifestacoes_filtrado["Área Responsável"].value_counts().reset_index()
+            area_counts.columns = ['Área Responsável', 'Total de Manifestações']
 
             # Adiciona a linha de Total
             total_row = pd.DataFrame({
-                'Área Responsável Resp. Concl.': ['Total'],
+                'Área Responsável': ['Total'],
                 'Total de Manifestações': [area_counts['Total de Manifestações'].sum()]
             })
             
