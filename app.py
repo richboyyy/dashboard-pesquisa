@@ -17,7 +17,11 @@ st.set_page_config(
 @st.cache_data
 def carregar_dados_pesquisa():
     try:
-        df = pd.read_csv("pesquisa.csv", sep=";", encoding='utf-8')
+        # Usa o latin1 que evita erro de decodificação
+        df = pd.read_csv("pesquisa.csv", sep=";", encoding='latin1')
+
+        df.columns = df.columns.str.strip()
+
         coluna_satisfacao = "Você está satisfeito(a) com o atendimento prestado?"
         if coluna_satisfacao in df.columns:
             df[coluna_satisfacao] = df[coluna_satisfacao].str.replace('?? ', '', regex=False).str.strip()
@@ -40,12 +44,18 @@ def carregar_dados_pesquisa():
 @st.cache_data
 def carregar_dados_manifestacoes():
     try:
-        df = pd.read_csv("ListaManifestacoes.csv", sep=";", encoding='utf-8')
+        df = pd.read_csv("ListaManifestacoes.csv", sep=";")
 
-        # ATUALIZAÇÃO: Renomeia a coluna para um nome mais simples e limpo.
-        if 'Área Responsável Resp. Concl.' in df.columns:
-            df.rename(columns={'Área Responsável Resp. Concl.': 'Área Responsável'}, inplace=True)
+        # Limpa e padroniza os nomes das colunas
+        df.columns = df.columns.str.strip()
 
+        # Renomeia a coluna problemática, se existir
+        for col in df.columns:
+            if "Área Responsável" in col:
+                df.rename(columns={col: "Área Responsável"}, inplace=True)
+                break
+
+        # Tratamento da data de abertura
         if 'Data de Abertura' in df.columns:
             df['Data de Abertura'] = df['Data de Abertura'].astype(str).str.strip()
             df['Data de Abertura'] = df['Data de Abertura'].replace(
@@ -61,6 +71,7 @@ def carregar_dados_manifestacoes():
     except FileNotFoundError:
         st.error("Arquivo 'ListaManifestacoes.csv' não encontrado.")
         return None
+
 
 # --- Carregamento dos Dados ---
 df_pesquisa = carregar_dados_pesquisa()
