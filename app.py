@@ -4,22 +4,28 @@ import plotly.express as px
 import locale
 
 # --- Configurações Iniciais ---
-#locale.setlocale(locale.LC_TIME, 'pt_BR.UTF-8')  # para nomes de meses em português
-
 st.set_page_config(
     page_title="Dashboard Ouvidoria ANVISA",
     page_icon="📊",
     layout="wide"
 )
 
+# Tenta configurar o locale para português, se falhar, emite um aviso.
+#try:
+#    locale.setlocale(locale.LC_TIME, 'pt_BR.UTF-8')
+#except locale.Error:
+#    st.warning("Locale 'pt_BR.UTF-8' não encontrado. Os nomes dos meses podem aparecer em português.")
+
 # --- Funções de Carregamento de Dados ---
 
 @st.cache_data
 def carregar_dados_pesquisa():
+    """
+    Carrega e processa os dados da pesquisa de satisfação (pesquisa.csv).
+    """
     try:
-        # Usa o latin1 que evita erro de decodificação
-        df = pd.read_csv("pesquisa.csv", sep=";", encoding='latin1')
-
+        # Usando utf-8 que é mais padrão e robusto para caracteres especiais.
+        df = pd.read_csv("pesquisa.csv", sep=";", encoding='utf-8')
         df.columns = df.columns.str.strip()
 
         coluna_satisfacao = "Você está satisfeito(a) com o atendimento prestado?"
@@ -32,35 +38,40 @@ def carregar_dados_pesquisa():
             if coluna in df.columns:
                 coluna_data_encontrada = coluna
                 break
+        
+        # CORREÇÃO: Garante que a coluna 'mês' seja sempre criada.
         if coluna_data_encontrada:
-            df[coluna_data_encontrada] = df[coluna_data_encontrada].astype(str).str.strip()
             df[coluna_data_encontrada] = pd.to_datetime(df[coluna_data_encontrada], errors='coerce', dayfirst=True)
             df["mês"] = df[coluna_data_encontrada].dt.to_period('M')
+        else:
+            # Se não encontrar coluna de data, cria a coluna 'mês' com valores nulos.
+            st.warning("Nenhuma coluna de data encontrada no arquivo 'pesquisa.csv'. O filtro de tempo não será aplicado a este dataset.")
+            df["mês"] = None
+        
         return df
     except FileNotFoundError:
         st.error("Arquivo 'pesquisa.csv' não encontrado.")
         return None
+    except Exception as e:
+        st.error(f"Erro ao carregar 'pesquisa.csv': {e}")
+        return None
 
 @st.cache_data
 def carregar_dados_manifestacoes():
+    """
+    Carrega e processa os dados gerais de manifestações (ListaManifestacoes.csv).
+    """
     try:
-        df = pd.read_csv("ListaManifestacoes.csv", sep=";")
-
-        # Limpa e padroniza os nomes das colunas
+        df = pd.read_csv("ListaManifestacoes.csv", sep=";", encoding='utf-8')
         df.columns = df.columns.str.strip()
 
-        # Renomeia a coluna problemática, se existir
+        # Renomeia a coluna problemática, se existir, para um nome padrão.
         for col in df.columns:
             if "Área Responsável" in col:
                 df.rename(columns={col: "Área Responsável"}, inplace=True)
                 break
 
-        # Tratamento da data de abertura
         if 'Data de Abertura' in df.columns:
-            df['Data de Abertura'] = df['Data de Abertura'].astype(str).str.strip()
-            df['Data de Abertura'] = df['Data de Abertura'].replace(
-                ["", " ", "null", "nan", "sem data", "--", ".", ".."], pd.NA
-            )
             df['Data de Abertura'] = pd.to_datetime(df['Data de Abertura'], errors='coerce', dayfirst=True)
             df["mês"] = df['Data de Abertura'].dt.to_period('M')
         else:
@@ -71,7 +82,9 @@ def carregar_dados_manifestacoes():
     except FileNotFoundError:
         st.error("Arquivo 'ListaManifestacoes.csv' não encontrado.")
         return None
-
+    except Exception as e:
+        st.error(f"Erro ao carregar 'ListaManifestacoes.csv': {e}")
+        return None
 
 # --- Carregamento dos Dados ---
 df_pesquisa = carregar_dados_pesquisa()
@@ -103,9 +116,13 @@ if "mês" in df_manifestacoes.columns and not df_manifestacoes["mês"].isnull().
         (usar_data_invalida & df_manifestacoes["mês"].isna())
     ]
 
-    df_pesquisa_filtrado = df_pesquisa[
-        df_pesquisa["mês"].isin(meses_selecionados_periodo)
-    ]
+    # Filtra o dataframe de pesquisa apenas se ele tiver a coluna 'mês' válida
+    if "mês" in df_pesquisa.columns and not df_pesquisa["mês"].isnull().all():
+        df_pesquisa_filtrado = df_pesquisa[
+            df_pesquisa["mês"].isin(meses_selecionados_periodo)
+        ]
+    else:
+        df_pesquisa_filtrado = df_pesquisa # Se não houver mês, não filtra
 else:
     st.sidebar.info("Filtro de tempo não disponível.")
     df_manifestacoes_filtrado = df_manifestacoes
@@ -148,16 +165,6 @@ with tab1:
             fig_satisfacao = px.bar(satisfacao, x='Quantidade', y='Satisfação', color='Satisfação', text_auto=True)
             fig_satisfacao.update_layout(showlegend=False, yaxis={'categoryorder':'total ascending'})
             st.plotly_chart(fig_satisfacao, use_container_width=True)
-
-        st.subheader("Distribuição de Respostas por Área")
-        if "Área" in df_pesquisa_filtrado.columns:
-            respostas_por_area = df_pesquisa_filtrado["Área"].value_counts().reset_index()
-            respostas_por_area.columns = ['Área', 'Quantidade']
-            fig_respostas_area = px.bar(respostas_por_area, x='Área', y='Quantidade', text_auto=True, color='Área')
-            fig_respostas_area.update_layout(showlegend=False, xaxis_tickangle=-45)
-            st.plotly_chart(fig_respostas_area, use_container_width=True)
-        else:
-            st.warning("Coluna 'Área' não encontrada na pesquisa.")
     else:
         st.info("Nenhum dado de pesquisa encontrado para o período selecionado.")
 
@@ -197,21 +204,19 @@ with tab2:
 
         with col3:
             st.subheader("Distribuição de Manifestações por Área")
-            
-            # --- ATUALIZAÇÃO: Exibindo como Tabela ---
-            area_counts = df_manifestacoes_filtrado["Área Responsável"].value_counts().reset_index()
-            area_counts.columns = ['Área Responsável', 'Total de Manifestações']
+            if "Área Responsável" in df_manifestacoes_filtrado.columns:
+                area_counts = df_manifestacoes_filtrado["Área Responsável"].value_counts().reset_index()
+                area_counts.columns = ['Área Responsável', 'Total de Manifestações']
 
-            # Adiciona a linha de Total
-            total_row = pd.DataFrame({
-                'Área Responsável': ['Total'],
-                'Total de Manifestações': [area_counts['Total de Manifestações'].sum()]
-            })
-            
-            area_display_table = pd.concat([area_counts, total_row], ignore_index=True)
-
-            # Exibe a tabela usando st.dataframe
-            st.dataframe(area_display_table, use_container_width=True, hide_index=True)
+                total_row = pd.DataFrame({
+                    'Área Responsável': ['Total'],
+                    'Total de Manifestações': [area_counts['Total de Manifestações'].sum()]
+                })
+                
+                area_display_table = pd.concat([area_counts, total_row], ignore_index=True)
+                st.dataframe(area_display_table, use_container_width=True, hide_index=True)
+            else:
+                st.error("Coluna 'Área Responsável' não encontrada.")
 
         with col4:
             st.subheader("Situação Atual das Manifestações")
