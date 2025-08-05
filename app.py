@@ -181,7 +181,7 @@ with tab1:
 # --- Aba 2 ---
 with tab2:
     st.header("Painel de Manifestações Gerais")
-    st.metric("📌 Total de Manifestações no CSV", f"{len(df_manifestacoes):,}".replace(",", "."))
+    st.metric("📩 Total de Manifestações", f"{len(df_manifestacoes):,}".replace(",", "."))
 
     if not df_manifestacoes_filtrado.empty:
         
