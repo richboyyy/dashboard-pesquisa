@@ -25,7 +25,7 @@ def carregar_dados_pesquisa():
     """
     try:
         # Usando utf-8 que é mais padrão e robusto para caracteres especiais.
-        df = pd.read_csv("pesquisa.csv", sep=";", encoding='latin-1')
+        df = pd.read_csv("pesquisa.csv", sep=";")
         df.columns = df.columns.str.strip()
 
         coluna_satisfacao = "Você está satisfeito(a) com o atendimento prestado?"
