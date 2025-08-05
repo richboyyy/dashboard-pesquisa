@@ -184,12 +184,7 @@ with tab2:
     st.metric("📌 Total de Manifestações no CSV", f"{len(df_manifestacoes):,}".replace(",", "."))
 
     if not df_manifestacoes_filtrado.empty:
-        if 'NUP' in df_manifestacoes_filtrado.columns:
-            total_manifestacoes_unicas = df_manifestacoes_filtrado['NUP'].nunique()
-            st.metric("Total de Manifestações Únicas no Período", f"{total_manifestacoes_unicas:,}".replace(",", "."))
-        else:
-            st.metric("Total de Linhas no Período", f"{len(df_manifestacoes_filtrado):,}".replace(",", "."))
-
+        
         st.markdown("---")
 
         col1, col2 = st.columns(2)
