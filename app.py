@@ -25,7 +25,7 @@ def carregar_dados_pesquisa():
     """
     try:
         # Usando utf-8 que é mais padrão e robusto para caracteres especiais.
-        df = pd.read_csv("pesquisa.csv", sep=";", encoding='utf-8')
+        df = pd.read_csv("pesquisa.csv", sep=";", encoding='latin-1')
         df.columns = df.columns.str.strip()
 
         coluna_satisfacao = "Você está satisfeito(a) com o atendimento prestado?"
@@ -62,7 +62,7 @@ def carregar_dados_manifestacoes():
     Carrega e processa os dados gerais de manifestações (ListaManifestacoes.csv).
     """
     try:
-        df = pd.read_csv("ListaManifestacoes.csv", sep=";", encoding='utf-8')
+        df = pd.read_csv("ListaManifestacoes.csv", sep=";")
         df.columns = df.columns.str.strip()
 
         # Renomeia a coluna problemática, se existir, para um nome padrão.
@@ -165,9 +165,19 @@ with tab1:
             fig_satisfacao = px.bar(satisfacao, x='Quantidade', y='Satisfação', color='Satisfação', text_auto=True)
             fig_satisfacao.update_layout(showlegend=False, yaxis={'categoryorder':'total ascending'})
             st.plotly_chart(fig_satisfacao, use_container_width=True)
+
+        st.subheader("Distribuição de Respostas por Área")
+        if "Área" in df_pesquisa_filtrado.columns:
+            respostas_por_area = df_pesquisa_filtrado["Área"].value_counts().reset_index()
+            respostas_por_area.columns = ['Área', 'Quantidade']
+            fig_respostas_area = px.bar(respostas_por_area, x='Área', y='Quantidade', text_auto=True, color='Área')
+            fig_respostas_area.update_layout(showlegend=False, xaxis_tickangle=-45)
+            st.plotly_chart(fig_respostas_area, use_container_width=True)
+        else:
+            st.warning("Coluna 'Área' não encontrada na pesquisa.")
     else:
         st.info("Nenhum dado de pesquisa encontrado para o período selecionado.")
-
+    
 # --- Aba 2 ---
 with tab2:
     st.header("Painel de Manifestações Gerais")
