@@ -62,7 +62,7 @@ def carregar_dados_manifestacoes():
     Carrega e processa os dados gerais de manifestações (ListaManifestacoes.csv).
     """
     try:
-        df = pd.read_csv("ListaManifestacoes.csv", sep=";")
+        df = pd.read_csv("ListaManifestacaoAtualizadaa.csv", sep=";", encoding = 'utf-8')
         df.columns = df.columns.str.strip()
 
         # Renomeia a coluna problemática, se existir, para um nome padrão.
@@ -127,7 +127,8 @@ else:
     st.sidebar.info("Filtro de tempo não disponível.")
     df_manifestacoes_filtrado = df_manifestacoes
     df_pesquisa_filtrado = df_pesquisa
-
+    # Adicione esta linha logo após carregar o arquivo
+    st.write("Colunas disponíveis:", df_manifestacoes_filtrado.columns.tolist())
 # --- Layout Principal ---
 
 st.title("📊 Dashboard Ouvidoria ANVISA")
