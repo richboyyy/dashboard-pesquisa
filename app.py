@@ -10,11 +10,12 @@ st.set_page_config(
     layout="wide"
 )
 
-# Tenta configurar o locale para português, se falhar, emite um aviso.
-#try:
-#    locale.setlocale(locale.LC_TIME, 'pt_BR.UTF-8')
-#except locale.Error:
-#    st.warning("Locale 'pt_BR.UTF-8' não encontrado. Os nomes dos meses podem aparecer em português.")
+# Tenta configurar o locale para português. Isso garante que os nomes dos meses
+# na interface (ex: "Setembro") sejam exibidos corretamente.
+try:
+    locale.setlocale(locale.LC_TIME, 'pt_BR.UTF-8')
+except locale.Error:
+    st.warning("Locale 'pt_BR.UTF-8' não encontrado. Os nomes dos meses podem aparecer em inglês.")
 
 # --- Funções de Carregamento de Dados ---
 
@@ -62,8 +63,15 @@ def carregar_dados_manifestacoes():
     Carrega e processa os dados gerais de manifestações (ListaManifestacoes.csv).
     """
     try:
-        df = pd.read_csv("ListaManifestacaoAtualizadaa.csv", sep=";", encoding = 'utf-8')
-        df.columns = df.columns.str.strip()
+        df = pd.read_csv("ListaManifestacaoAtualizadaa.csv", sep=";", encoding= 'utf-8')
+
+# Normaliza colunas
+        df.columns = (
+        df.columns
+        .str.strip()       # remove espaços antes/depois
+        .str.replace("﻿", "", regex=False)  # remove caracteres ocultos (BOM)
+        .str.replace("\uFEFF", "", regex=False)  # remove BOM explícito
+)
 
         # Renomeia a coluna problemática, se existir, para um nome padrão.
         for col in df.columns:
@@ -93,24 +101,39 @@ df_manifestacoes = carregar_dados_manifestacoes()
 if df_pesquisa is None or df_manifestacoes is None:
     st.stop()
 
-# --- Filtro de Tempo ---
+# --- Filtro de Tempo (SEÇÃO CORRIGIDA) ---
 st.sidebar.title("Filtro de Tempo")
 usar_data_invalida = st.sidebar.checkbox("Incluir manifestações sem data?", value=False)
 
+# Verifica se a coluna de mês existe e não está completamente vazia
 if "mês" in df_manifestacoes.columns and not df_manifestacoes["mês"].isnull().all():
-    df_manifestacoes['mês_display'] = df_manifestacoes['mês'].dt.strftime('%B/%Y').str.capitalize()
-    meses_disponiveis = sorted(df_manifestacoes["mês_display"].dropna().unique(), reverse=True)
+    
+    # 1. Pega os períodos únicos e válidos e os ordena
+    meses_periodo_unicos = sorted(df_manifestacoes["mês"].dropna().unique(), reverse=True)
+    
+    # 2. Cria um dicionário para mapear o texto de exibição (ex: "Setembro/2025") de volta para o objeto de período original
+    #    Isso evita a necessidade de converter strings de volta para datas mais tarde.
+    mapa_mes_display_para_periodo = {
+        periodo.strftime('%B/%Y').capitalize(): periodo 
+        for periodo in meses_periodo_unicos
+    }
+    
+    # 3. Pega as chaves do dicionário (os textos) para usar como opções no multiselect
+    opcoes_meses_display = list(mapa_mes_display_para_periodo.keys())
 
+    # 4. Exibe o multiselect para o usuário
     meses_selecionados_display = st.sidebar.multiselect(
         "Selecione o(s) mês(es):",
-        options=meses_disponiveis,
-        default=meses_disponiveis
+        options=opcoes_meses_display,
+        default=opcoes_meses_display  # Por padrão, todos vêm selecionados
     )
 
-    meses_selecionados_periodo = pd.to_datetime(
-        meses_selecionados_display, format="%B/%Y", errors="coerce"
-    ).to_period('M')
+    # 5. Usa o dicionário para converter os textos selecionados de volta para os objetos de período
+    meses_selecionados_periodo = [
+        mapa_mes_display_para_periodo[display] for display in meses_selecionados_display
+    ]
 
+    # 6. Filtra os DataFrames usando a lista de períodos
     df_manifestacoes_filtrado = df_manifestacoes[
         (df_manifestacoes["mês"].isin(meses_selecionados_periodo)) |
         (usar_data_invalida & df_manifestacoes["mês"].isna())
@@ -122,15 +145,14 @@ if "mês" in df_manifestacoes.columns and not df_manifestacoes["mês"].isnull().
             df_pesquisa["mês"].isin(meses_selecionados_periodo)
         ]
     else:
-        df_pesquisa_filtrado = df_pesquisa # Se não houver mês, não filtra
+        # Se não houver mês, não filtra
+        df_pesquisa_filtrado = df_pesquisa
 else:
     st.sidebar.info("Filtro de tempo não disponível.")
     df_manifestacoes_filtrado = df_manifestacoes
     df_pesquisa_filtrado = df_pesquisa
-    # Adicione esta linha logo após carregar o arquivo
-    st.write("Colunas disponíveis:", df_manifestacoes_filtrado.columns.tolist())
-# --- Layout Principal ---
 
+# --- Layout Principal ---
 st.title("📊 Dashboard Ouvidoria ANVISA")
 
 tab1, tab2 = st.tabs(["Análise da Pesquisa de Satisfação", "Painel de Manifestações Gerais"])
