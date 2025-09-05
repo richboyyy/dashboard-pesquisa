@@ -10,13 +10,6 @@ st.set_page_config(
     layout="wide"
 )
 
-# Tenta configurar o locale para português. Isso garante que os nomes dos meses
-# na interface (ex: "Setembro") sejam exibidos corretamente.
-try:
-    locale.setlocale(locale.LC_TIME, 'pt_BR.UTF-8')
-except locale.Error:
-    st.warning("Locale 'pt_BR.UTF-8' não encontrado. Os nomes dos meses podem aparecer em inglês.")
-
 # --- Funções de Carregamento de Dados ---
 
 @st.cache_data
@@ -204,7 +197,7 @@ with tab1:
 # --- Aba 2 ---
 with tab2:
     st.header("Painel de Manifestações Gerais")
-    st.metric("📩 Total de Manifestações", f"{len(df_manifestacoes):,}".replace(",", "."))
+    st.metric("📩 Total de Manifestações", f"{len(df_manifestacoes_filtrado):,}".replace(",", "."))
 
     if not df_manifestacoes_filtrado.empty:
         
