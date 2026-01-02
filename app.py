@@ -53,18 +53,39 @@ def carregar_dados_pesquisa():
 @st.cache_data
 def carregar_dados_manifestacoes():
     """
-    Carrega e processa os dados gerais de manifestações (ListaManifestacoes.csv).
+    Carrega e processa os dados gerais de manifestações.
+    Tenta ler com ';' e, se falhar ou ler errado, tenta com ','.
     """
+    arquivo = "ListaManifestacaoAtualizadaa.csv"
+    df = None
+    
+    # --- TENTATIVA DE LEITURA ROBUSTA ---
     try:
-        df = pd.read_csv("ListaManifestacaoAtualizadaa.csv", sep=";", encoding= 'utf-8')
+        # 1. Tenta ler com ponto e vírgula (padrão Excel PT-BR)
+        df = pd.read_csv(arquivo, sep=";", encoding='utf-8')
+        
+        # Verifica se leu tudo em uma única coluna (sinal de separador errado)
+        if len(df.columns) <= 1:
+             # Se deu errado, força a leitura com vírgula
+             df = pd.read_csv(arquivo, sep=",", encoding='utf-8')
+             
+    except:
+        # 2. Se a primeira tentativa falhar (ParserError), tenta direto com vírgula
+        try:
+            df = pd.read_csv(arquivo, sep=",", encoding='utf-8')
+        except Exception as e:
+            st.error(f"Erro crítico ao ler '{arquivo}'. Verifique se o arquivo é um CSV válido. Detalhes: {e}")
+            return None
 
-# Normaliza colunas
+    # --- PROCESSAMENTO DOS DADOS ---
+    try:
+        # Normaliza colunas
         df.columns = (
-        df.columns
-        .str.strip()       # remove espaços antes/depois
-        .str.replace("﻿", "", regex=False)  # remove caracteres ocultos (BOM)
-        .str.replace("\uFEFF", "", regex=False)  # remove BOM explícito
-)
+            df.columns
+            .str.strip()       # remove espaços antes/depois
+            .str.replace("", "", regex=False)  # remove caracteres ocultos (BOM)
+            .str.replace("\uFEFF", "", regex=False)  # remove BOM explícito
+        )
 
         # Renomeia a coluna problemática, se existir, para um nome padrão.
         for col in df.columns:
@@ -76,15 +97,13 @@ def carregar_dados_manifestacoes():
             df['Data de Abertura'] = pd.to_datetime(df['Data de Abertura'], errors='coerce', dayfirst=True)
             df["mês"] = df['Data de Abertura'].dt.to_period('M')
         else:
-            st.warning("Coluna 'Data de Abertura' não encontrada.")
+            st.warning("Coluna 'Data de Abertura' não encontrada no arquivo de manifestações.")
             df["mês"] = None
 
         return df
-    except FileNotFoundError:
-        st.error("Arquivo 'ListaManifestacoes.csv' não encontrado.")
-        return None
+
     except Exception as e:
-        st.error(f"Erro ao carregar 'ListaManifestacoes.csv': {e}")
+        st.error(f"Erro ao processar os dados de '{arquivo}': {e}")
         return None
 
 # --- Carregamento dos Dados ---
@@ -94,7 +113,7 @@ df_manifestacoes = carregar_dados_manifestacoes()
 if df_pesquisa is None or df_manifestacoes is None:
     st.stop()
 
-# --- Filtro de Tempo (SEÇÃO CORRIGIDA) ---
+# --- Filtro de Tempo ---
 st.sidebar.title("Filtro de Tempo")
 usar_data_invalida = st.sidebar.checkbox("Incluir manifestações sem data?", value=False)
 
@@ -104,14 +123,13 @@ if "mês" in df_manifestacoes.columns and not df_manifestacoes["mês"].isnull().
     # 1. Pega os períodos únicos e válidos e os ordena
     meses_periodo_unicos = sorted(df_manifestacoes["mês"].dropna().unique(), reverse=True)
     
-    # 2. Cria um dicionário para mapear o texto de exibição (ex: "Setembro/2025") de volta para o objeto de período original
-    #    Isso evita a necessidade de converter strings de volta para datas mais tarde.
+    # 2. Cria um dicionário para mapear o texto de exibição
     mapa_mes_display_para_periodo = {
         periodo.strftime('%B/%Y').capitalize(): periodo 
         for periodo in meses_periodo_unicos
     }
     
-    # 3. Pega as chaves do dicionário (os textos) para usar como opções no multiselect
+    # 3. Pega as chaves do dicionário para usar como opções
     opcoes_meses_display = list(mapa_mes_display_para_periodo.keys())
 
     # 4. Exibe o multiselect para o usuário
